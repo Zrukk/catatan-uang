@@ -18,7 +18,7 @@ Aplikasi pencatat keuangan sederhana — multi dompet, multi kurensi, dengan uan
 3. Buka **Settings → Pages**
 4. Di **Source**, pilih `Deploy from a branch` → branch `main` → folder `/ (root)`
 5. Klik **Save**, tunggu 1-2 menit
-6. Akses di: `https://USERNAME.github.io/catatan-uang/`
+6. Akses di: `https://Zrukk.github.io/catatan-uang/`
 
 ## 📁 Struktur
 
