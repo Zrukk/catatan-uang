@@ -1,20 +1,23 @@
 /* ============================================
-   TRANSAKSI (pemasukan & pengeluaran)
+   TRANSAKSI
 ============================================ */
 
-/** Update prefix simbol kurensi di input jumlah */
 function updateFormCurrency() {
-  const w = state.wallets.find(x => x.id === $('wallet').value);
-  if (w) $('formCurrPrefix').textContent = CURRENCIES[w.currency]?.symbol || '';
+  const dest = $('wallet').value;
+  let currency;
+  if (dest === 'jajan' || dest === 'tabungan') {
+    currency = state[dest].currency;
+  } else {
+    const w = state.wallets.find(x => x.id === dest);
+    if (!w) return;
+    currency = w.currency;
+  }
+  $('formCurrPrefix').textContent = CURRENCIES[currency]?.symbol || '';
 }
 
-/** Handler submit form transaksi */
 function submitTransaction(e) {
   e.preventDefault();
-
-  const walletId = $('wallet').value;
-  const wallet = state.wallets.find(w => w.id === walletId);
-  if (!wallet) return alert('Pilih dompet terlebih dahulu!');
+  const dest = $('wallet').value;
 
   const tx = {
     id: Date.now(),
@@ -22,33 +25,42 @@ function submitTransaction(e) {
     amount: parseFloat($('amount').value),
     category: $('category').value,
     date: $('date').value,
-    type: currentType,
-    walletId,
-    currency: wallet.currency
+    type: currentType
   };
+
+  // Tentukan tujuan
+  if (dest === 'jajan' || dest === 'tabungan') {
+    tx.destination = dest;
+    tx.currency = state[dest].currency;
+  } else {
+    const w = state.wallets.find(x => x.id === dest);
+    if (!w) return alert('Pilih dompet terlebih dahulu!');
+    tx.destination = 'wallet';
+    tx.walletId = dest;
+    tx.currency = w.currency;
+  }
 
   if (!tx.desc || !tx.amount || tx.amount <= 0) return alert('Isi data dengan benar!');
   state.transactions.push(tx);
   save();
 
-  // Reset form, pertahankan dompet terpilih
+  // Reset form, pertahankan pilihan dompet
+  const savedDest = dest;
   $('form').reset();
   $('date').valueAsDate = new Date();
-  $('wallet').value = walletId;
+  $('wallet').value = savedDest;
   updateFormCurrency();
 }
 
-/** Hapus satu transaksi */
 function deleteTx(id) {
   if (!confirm('Hapus transaksi ini?')) return;
   state.transactions = state.transactions.filter(t => t.id !== id);
   save();
 }
 
-/** Hapus semua transaksi */
 function clearAllTransactions() {
   if (!state.transactions.length) return;
   if (!confirm('Hapus SEMUA transaksi? Tidak bisa dibatalkan.')) return;
   state.transactions = [];
   save();
-    }
+     }
