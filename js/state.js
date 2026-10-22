@@ -1,21 +1,44 @@
 /* ============================================
    STATE GLOBAL & PENYIMPANAN
-   Semua data aplikasi disimpan di object `state`.
 ============================================ */
 
 let state = loadState();
-let currentType = 'income'; // 'income' | 'expense'
+let currentType = 'income';
 
-/** Muat state dari localStorage (dengan migrasi v1) */
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) {
+    const s = JSON.parse(saved);
+    // Migrasi: kalau ada jajan.amount / tabungan.amount dari versi lama, ubah jadi transaksi
+    ['jajan', 'tabungan'].forEach(pot => {
+      if (s[pot] && typeof s[pot].amount === 'number' && s[pot].amount !== 0) {
+        const label = pot === 'jajan' ? 'Uang Jajan' : 'Tabungan';
+        s.transactions.push({
+          id: Date.now() + Math.random(),
+          desc: `Saldo awal ${label}`,
+          amount: Math.abs(s[pot].amount),
+          category: 'Lainnya',
+          date: new Date().toISOString().slice(0, 10),
+          type: s[pot].amount > 0 ? 'income' : 'expense',
+          destination: pot,
+          currency: s[pot].currency || 'IDR'
+        });
+        delete s[pot].amount;
+      }
+    });
+    return s;
+  }
 
-  // Migrasi dari versi 1 (tanpa dompet)
+  // Migrasi dari v1
   let transactions = [];
   try {
     const old = JSON.parse(localStorage.getItem(OLD_KEY) || '[]');
-    transactions = old.map(t => ({ ...t, walletId: 'w_cash', currency: 'IDR' }));
+    transactions = old.map(t => ({
+      ...t,
+      walletId: 'w_cash',
+      currency: 'IDR',
+      destination: 'wallet'
+    }));
   } catch (e) { /* ignore */ }
 
   return {
@@ -24,29 +47,55 @@ function loadState() {
       { id: 'w_digital', name: 'Dompet Digital', currency: 'IDR', icon: '📱' }
     ],
     transactions,
-    jajan:    { amount: 0, currency: 'IDR' },
-    tabungan: { amount: 0, currency: 'IDR' }
+    jajan:    { currency: 'IDR' },
+    tabungan: { currency: 'IDR' }
   };
 }
 
-/** Simpan state ke localStorage lalu render ulang */
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   render();
 }
 
-/** Hitung saldo satu dompet (dalam kurensi dompet itu) */
+/** Ambil destination transaksi dengan default backward-compat */
+function getDest(t) {
+  return t.destination || 'wallet';
+}
+
+/** Saldo wallet dalam IDR (dari transaksi) */
+function getWalletBalanceInIDR(walletId) {
+  return state.transactions
+    .filter(t => getDest(t) === 'wallet' && t.walletId === walletId)
+    .reduce((sum, t) => {
+      const v = toIDR(t.amount, t.currency || 'IDR');
+      return sum + (t.type === 'income' ? v : -v);
+    }, 0);
+}
+
+/** Saldo wallet dalam kurensi wallet itu sendiri */
 function getWalletBalance(walletId) {
   const w = state.wallets.find(x => x.id === walletId);
   if (!w) return 0;
-  return state.transactions
-    .filter(t => t.walletId === walletId)
-    .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+  return getWalletBalanceInIDR(walletId) / CURRENCIES[w.currency].rate;
 }
 
-/** Total semua dompet setelah dikonversi ke IDR */
-function getTotalInIDR() {
-  return state.wallets.reduce((sum, w) => {
-    return sum + toIDR(getWalletBalance(w.id), w.currency);
-  }, 0);
+/** Saldo pot (jajan/tabungan) dalam IDR */
+function getPotBalanceInIDR(pot) {
+  return state.transactions
+    .filter(t => getDest(t) === pot)
+    .reduce((sum, t) => {
+      const v = toIDR(t.amount, t.currency || 'IDR');
+      return sum + (t.type === 'income' ? v : -v);
+    }, 0);
 }
+
+/** Saldo pot dalam kurensi pot itu */
+function getPotBalance(pot) {
+  return getPotBalanceInIDR(pot) / CURRENCIES[state[pot].currency].rate;
+}
+
+/** Total semua aset dalam IDR (wallet + pot) */
+function getTotalInIDR() {
+  const wTotal = state.wallets.reduce((s, w) => s + getWalletBalanceInIDR(w.id), 0);
+  return wTotal + getPotBalanceInIDR('jajan') + getPotBalanceInIDR('tabungan');
+       }
